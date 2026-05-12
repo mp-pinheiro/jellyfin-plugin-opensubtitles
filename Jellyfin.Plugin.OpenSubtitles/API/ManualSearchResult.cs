@@ -30,12 +30,12 @@ public class ManualSearchResult
     /// <summary>
     /// Gets or sets the community rating.
     /// </summary>
-    public float CommunityRating { get; set; }
+    public float? CommunityRating { get; set; }
 
     /// <summary>
     /// Gets or sets the download count.
     /// </summary>
-    public int DownloadCount { get; set; }
+    public int? DownloadCount { get; set; }
 
     /// <summary>
     /// Gets or sets the subtitle file format.
@@ -75,7 +75,7 @@ public class ManualSearchResult
     /// <summary>
     /// Gets or sets the frame rate the subtitle was timed for.
     /// </summary>
-    public float FrameRate { get; set; }
+    public float? FrameRate { get; set; }
 
     /// <summary>
     /// Gets or sets the upload date.
