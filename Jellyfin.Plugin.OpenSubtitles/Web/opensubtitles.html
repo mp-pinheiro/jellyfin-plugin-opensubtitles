@@ -23,11 +23,58 @@
                     <a is="emby-linkbutton" class="button-link" target="_blank" href="https://92500a62-df9e-42ed-82a4-e6b3eeb89365.site.hbuptime.com/">OpenSubtitles API Status</a>
                 </div>
                 <div class="fieldDescription" id="ossresponse"></div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label class="emby-checkbox-label">
+                        <input type="checkbox" is="emby-checkbox" id="strictMatching" />
+                        <span>Strict matching (require exact season/episode or IMDb id on results)</span>
+                    </label>
+                    <div class="fieldDescription">When off, automatic searches keep any Episode/Movie result instead of dropping those whose season/episode (or IMDb id) don't match exactly. Hash matches are still ordered first.</div>
+                </div>
                 <div>
                     <button id="save-button" is="emby-button" type="submit" class="raised button-submit block">
                         <span>${Save}</span>
                     </button>
                 </div>
+            </form>
+
+            <h2 class="sectionTitle">Manual subtitle search</h2>
+            <p class="fieldDescription">Use this form when automatic matching fails. Results come straight from OpenSubtitles.com and bypass the strict post-filter.</p>
+            <form id="OpenSubtitlesManualSearchForm">
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="manualQuery" label="Title / release name" />
+                </div>
+                <div class="inputContainer">
+                    <select is="emby-select" id="manualType" label="Type">
+                        <option value="movie">Movie</option>
+                        <option value="episode">Episode</option>
+                    </select>
+                </div>
+                <div class="inputContainer">
+                    <select is="emby-select" id="manualLanguage" label="Language"></select>
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="number" id="manualSeason" label="Season" min="0" />
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="number" id="manualEpisode" label="Episode" min="0" />
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="manualImdbId" label="IMDb id (numeric, no leading 'tt')" />
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="number" id="manualYear" label="Year" min="1800" />
+                </div>
+                <div class="inputContainer">
+                    <input is="emby-input" type="text" id="manualMediaPath" label="Media file path (download destination)" />
+                    <div class="fieldDescription">The chosen subtitle will be written next to this file as <code>&lt;basename&gt;.&lt;language&gt;.srt</code>.</div>
+                </div>
+                <div>
+                    <button id="manualSearchButton" is="emby-button" type="submit" class="raised button-submit block">
+                        <span>Search</span>
+                    </button>
+                </div>
+                <div class="fieldDescription" id="manualSearchStatus"></div>
+                <div id="manualSearchResults" style="margin-top: 1em;"></div>
             </form>
         </div>
     </div>
