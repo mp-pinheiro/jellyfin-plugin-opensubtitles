@@ -268,12 +268,12 @@ public class OpenSubtitleDownloader : ISubtitleProvider
         var ext = string.IsNullOrEmpty(response.Format) ? "srt" : response.Format;
         var language = response.Language ?? "und";
         var suffix = string.Empty;
-        if (response.IsHearingImpaired ?? false)
+        if (response.IsHearingImpaired)
         {
             suffix += ".sdh";
         }
 
-        if (response.IsForced ?? false)
+        if (response.IsForced)
         {
             suffix += ".forced";
         }
