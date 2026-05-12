@@ -144,9 +144,10 @@ public class OpenSubtitleDownloader : ISubtitleProvider
         }
         else
         {
-            options.Add("query", BuildSearchQuery(request));
+            var isEpisode = request.ContentType == VideoContentType.Episode;
+            options.Add("query", BuildSearchQuery(isEpisode, request.SeriesName, request.ParentIndexNumber, request.IndexNumber, request.Name, request.MediaPath));
 
-            if (request.ContentType == VideoContentType.Episode)
+            if (isEpisode)
             {
                 if (request.ParentIndexNumber.HasValue)
                 {
@@ -160,7 +161,15 @@ public class OpenSubtitleDownloader : ISubtitleProvider
             }
         }
 
-        return await SearchAndMapAsync(options, request, request.Language, cancellationToken).ConfigureAwait(false);
+        var criteria = new MatchCriteria(
+            IsEpisode: request.ContentType == VideoContentType.Episode,
+            Season: request.ParentIndexNumber,
+            Episode: request.IndexNumber,
+            ImdbId: imdbId,
+            IsAutomated: request.IsAutomated,
+            IsPerfectMatch: request.IsPerfectMatch);
+
+        return await SearchAndMapAsync(options, criteria, request.Language, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -240,7 +249,7 @@ public class OpenSubtitleDownloader : ISubtitleProvider
             options.Add("year", year.Value.ToString(CultureInfo.InvariantCulture));
         }
 
-        return await SearchAndMapAsync(options, null, twoLetterIsoLanguageName, cancellationToken).ConfigureAwait(false);
+        return await SearchAndMapAsync(options, criteria: null, twoLetterIsoLanguageName, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -291,34 +300,37 @@ public class OpenSubtitleDownloader : ISubtitleProvider
     /// <summary>
     /// Builds the free-text <c>query</c> field for an OpenSubtitles search. For episodes with a
     /// known series name this returns <c>"{SeriesName} S{Season:D2}E{Episode:D2}"</c>; for movies
-    /// with a known item name it returns <see cref="SubtitleSearchRequest.Name"/>. In all other
-    /// cases it falls back to the file name of <see cref="SubtitleSearchRequest.MediaPath"/>.
+    /// with a known item name it returns <paramref name="name"/>. In all other cases it falls
+    /// back to the file name of <paramref name="mediaPath"/>.
     /// </summary>
-    /// <param name="request">The subtitle search request.</param>
+    /// <param name="isEpisode"><c>true</c> if the request is for an episode, otherwise movie.</param>
+    /// <param name="seriesName">The series name (episodes only).</param>
+    /// <param name="season">The season number (episodes only).</param>
+    /// <param name="episode">The episode number (episodes only).</param>
+    /// <param name="name">The item display name (movies).</param>
+    /// <param name="mediaPath">The media path, used as a fallback.</param>
     /// <returns>The search query string.</returns>
-    internal static string BuildSearchQuery(SubtitleSearchRequest request)
+    internal static string BuildSearchQuery(bool isEpisode, string? seriesName, int? season, int? episode, string? name, string? mediaPath)
     {
-        ArgumentNullException.ThrowIfNull(request);
-
-        if (request.ContentType == VideoContentType.Episode
-            && !string.IsNullOrWhiteSpace(request.SeriesName)
-            && request.ParentIndexNumber.HasValue
-            && request.IndexNumber.HasValue)
+        if (isEpisode
+            && !string.IsNullOrWhiteSpace(seriesName)
+            && season.HasValue
+            && episode.HasValue)
         {
             return string.Format(
                 CultureInfo.InvariantCulture,
                 "{0} S{1:D2}E{2:D2}",
-                request.SeriesName,
-                request.ParentIndexNumber.Value,
-                request.IndexNumber.Value);
+                seriesName,
+                season.Value,
+                episode.Value);
         }
 
-        if (request.ContentType == VideoContentType.Movie && !string.IsNullOrWhiteSpace(request.Name))
+        if (!isEpisode && !string.IsNullOrWhiteSpace(name))
         {
-            return request.Name;
+            return name;
         }
 
-        return Path.GetFileName(request.MediaPath ?? string.Empty);
+        return Path.GetFileName(mediaPath ?? string.Empty);
     }
 
     /// <summary>
@@ -327,11 +339,11 @@ public class OpenSubtitleDownloader : ISubtitleProvider
     /// equality checks are toggled by <paramref name="strict"/>.
     /// </summary>
     /// <param name="data">The result entry to evaluate.</param>
-    /// <param name="request">The originating request, or <c>null</c> for a manual search.</param>
+    /// <param name="criteria">The matching criteria, or <c>null</c> for a manual search.</param>
     /// <param name="strict">Whether to enforce strict S/E or IMDb equality.</param>
     /// <param name="badSubtitleIds">Known-bad file ids to filter out for automated requests.</param>
     /// <returns><c>true</c> if the entry should be kept.</returns>
-    internal static bool ShouldKeepResult(ResponseData data, SubtitleSearchRequest? request, bool strict, IReadOnlyCollection<int> badSubtitleIds)
+    internal static bool ShouldKeepResult(ResponseData data, MatchCriteria? criteria, bool strict, IReadOnlyCollection<int> badSubtitleIds)
     {
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(badSubtitleIds);
@@ -347,14 +359,14 @@ public class OpenSubtitleDownloader : ISubtitleProvider
             return false;
         }
 
-        if (request is { IsAutomated: true } && badSubtitleIds.Contains(fileId.Value))
+        if (criteria is { IsAutomated: true } && badSubtitleIds.Contains(fileId.Value))
         {
             return false;
         }
 
-        if (request is not null)
+        if (criteria is not null)
         {
-            var wantedType = request.ContentType == VideoContentType.Episode ? "Episode" : "Movie";
+            var wantedType = criteria.IsEpisode ? "Episode" : "Movie";
             if (data.Attributes.FeatureDetails?.FeatureType != wantedType)
             {
                 return false;
@@ -362,30 +374,21 @@ public class OpenSubtitleDownloader : ISubtitleProvider
 
             if (strict)
             {
-                if (request.ContentType == VideoContentType.Episode)
+                if (criteria.IsEpisode)
                 {
-                    if (data.Attributes.FeatureDetails?.SeasonNumber != request.ParentIndexNumber
-                        || data.Attributes.FeatureDetails?.EpisodeNumber != request.IndexNumber)
+                    if (data.Attributes.FeatureDetails?.SeasonNumber != criteria.Season
+                        || data.Attributes.FeatureDetails?.EpisodeNumber != criteria.Episode)
                     {
                         return false;
                     }
                 }
-                else
+                else if (criteria.ImdbId != 0 && data.Attributes.FeatureDetails?.ImdbId != criteria.ImdbId)
                 {
-                    long.TryParse(
-                        request.GetProviderId(MetadataProvider.Imdb)?.TrimStart('t') ?? string.Empty,
-                        NumberStyles.Any,
-                        CultureInfo.InvariantCulture,
-                        out var imdbId);
-
-                    if (imdbId != 0 && data.Attributes.FeatureDetails?.ImdbId != imdbId)
-                    {
-                        return false;
-                    }
+                    return false;
                 }
             }
 
-            if (request.IsPerfectMatch && !(data.Attributes.MovieHashMatch ?? false))
+            if (criteria.IsPerfectMatch && !(data.Attributes.MovieHashMatch ?? false))
             {
                 return false;
             }
@@ -396,7 +399,7 @@ public class OpenSubtitleDownloader : ISubtitleProvider
 
     private async Task<IEnumerable<RemoteSubtitleInfo>> SearchAndMapAsync(
         Dictionary<string, string> options,
-        SubtitleSearchRequest? request,
+        MatchCriteria? criteria,
         string responseLanguage,
         CancellationToken cancellationToken)
     {
@@ -418,7 +421,7 @@ public class OpenSubtitleDownloader : ISubtitleProvider
         var strict = _configuration?.StrictMatching ?? true;
 
         return searchResponse.Data
-            .Where(x => ShouldKeepResult(x, request, strict, _badSubtitleIds))
+            .Where(x => ShouldKeepResult(x, criteria, strict, _badSubtitleIds))
             .OrderByDescending(x => x.Attributes!.MovieHashMatch ?? false)
             .ThenByDescending(x => x.Attributes!.DownloadCount)
             .ThenByDescending(x => x.Attributes!.Ratings)
